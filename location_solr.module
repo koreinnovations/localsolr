@@ -1,0 +1,22 @@
+<?php
+//$Id$
+
+/**
+ * Impelementation of hook_apachesolr_update_index()
+ * adds the location fields to the solr index.
+ */
+function location_solr_apachesolr_update_index(&$doc, $node) {
+  if (!empty($node->location['lid'])) {
+    $doc->sm_name = $node->location['name'];
+    $doc->sm_street = $node->location['street'];
+    $doc->sm_city = $node->location['city'];
+    $doc->sm_province = $node->location['province'];
+    $doc->sm_postal = $node->location['postal'];
+    $doc->sm_country = $node->location['country'];
+    $doc->lat = $node->location['latitude'];
+    $doc->lng = $node->location['longitude'];
+    $doc->province_name = $node->location['province_name'];
+    $doc->country_name = $node->location['country_name'];
+  }
+}
+

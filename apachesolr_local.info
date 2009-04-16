@@ -1,0 +1,10 @@
+;$Id$
+
+name = Apachesolr local search
+description = Provides local lucene based geospacial search
+package = Apache Solr
+dependencies[] = apachesolr
+dependencies[] = location
+dependencies[] = gmap
+core = 6.x
+php = 5.2

@@ -1,0 +1,83 @@
+Index: /home/scott/core/comm/comm/html/sites/all/modules/contrib/apachesolr/schema.xml
+index 1d087d1..3018ac4 100644
+--- a/html/sites/all/modules/contrib/apachesolr/schema.xml
++++ b/html/sites/all/modules/contrib/apachesolr/schema.xml
+@@ -315,6 +315,13 @@
+         or to add multiple fields to the same field for easier/faster searching.  -->
+    <copyField source="title" dest="spell"/>
+    <copyField source="body" dest="spell"/>
++   <!-- local lucene field types -->
++   <field name="lat" type="sdouble" indexed="true" stored="true"/><!-- must match the latField in solrconfig.xml -->
++   <field name="lng" type="sdouble" indexed="true" stored="true"/><!-- must match the lngField in solrconfig.xml -->
++   <field name="geo_distance" type="sdouble"/> <!-- Optional but used for distributed searching -->
++   <dynamicField name="_local*" type="sdouble" indexed="true" stored="true"/><!-- used internally by localsolr -->
++    
++
+ 
+    <!-- Dynamic field definitions.  If a field name is not found, dynamicFields
+         will be used if the name matches any of the patterns.
+Index: /home/scott/core/comm/comm/html/sites/all/modules/contrib/apachesolr/solrconfig.xml
+index d5778d7..c1f820d 100644
+--- a/html/sites/all/modules/contrib/apachesolr/solrconfig.xml
++++ b/html/sites/all/modules/contrib/apachesolr/solrconfig.xml
+@@ -646,6 +646,60 @@
+      <str name="echoHandler">true</str>
+     </lst>
+   </requestHandler>
++  <!-- begin Localsolr configuration -->
++  <updateRequestProcessorChain>
++     <processor class="com.pjaol.search.solr.update.LocalUpdateProcessorFactory">
++        <str name="latField">lat</str> <!-- The field used to store your latitude -->
++        <str name="lngField">lng</str> <!-- The field used to store your longitude -->
++        <int name="startTier">9</int> <!-- The lowest level to store data at, level 9 covers about 100 miles,                                             level 5 about 1000 -->
++        <int name="endTier">20</int> <!-- The highest granular level you want to search at, 15 is about 1 mile -->
++       </processor>
++       <processor class="solr.RunUpdateProcessorFactory" />    
++       <processor class="solr.LogUpdateProcessorFactory" /> 
++   </updateRequestProcessorChain>
++  <searchComponent name="localsolr" class="com.pjaol.search.solr.component.LocalSolrQueryComponent" >
++    <str name="latField">lat</str><!-- The field used to store your latitude -->
++    <str name="lngField">lng</str><!-- The field used to store your longitude -->
++  </searchComponent>
++
++  <!-- local lucene request handler -->
++  <requestHandler name="geo" class="solr.StandardRequestHandler">
++    <lst name="defaults">
++      <str name="q">*:*</str>
++      <!-- example highlighter config, enable per-query with hl=true -->
++     <str name="hl">true</str>
++     <str name="hl.fl">body</str>
++     <int name="hl.snippets">3</int>
++     <str name="hl.mergeContiguous">true</str>
++   <!-- instructs Solr to return the field itself if no query terms are
++        found -->
++     <str name="f.body.hl.alternateField">body</str>
++     <str name="f.body.hl.maxAlternateFieldLength">256</str>
++     <str name="defType">dismax</str>
++     <str name="echoParams">explicit</str>
++     <float name="tie">0.01</float>
++     <str name="qf">
++        body^40.0 title^5.0 name^3.0 taxonomy_names^2.0 tags_h1^5.0 tags_h2_h3^3.0 tags_h4_h5_h6^2.0 tags_inline^1.0
++     </str>
++     <str name="pf">
++        body^2.0
++     </str>
++     <int name="ps">15</int>
++     <str name="mm">
++        2&lt;-35%
++     </str>
++    </lst>
++    <arr name="components">
++      <str>localsolr</str>
++      <str>facet</str> 
++      <str>mlt</str>
++      <str>highlight</str>
++      <str>debug</str>
++    </arr>
++  </requestHandler>
++<!-- end Localsolr configuration -->
++
++
+ 
+   <highlighting>
+    <!-- Configure the standard fragmenter -->

@@ -1,0 +1,9 @@
+;$Id$
+
+name = Apache Solr location integration
+description = Provides localsolr integration with the apachesolr, and the location module
+dependencies[] = apachesolr
+dependencies[] = location
+package = Apache Solr
+core = "6.x"
+php = 5.2
