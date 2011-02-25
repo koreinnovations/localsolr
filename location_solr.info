@@ -1,4 +1,3 @@
-;$Id$
 
 name = Apache Solr location integration
 description = Provides localsolr integration with the apachesolr, and the location module

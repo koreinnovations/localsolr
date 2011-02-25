@@ -1,5 +1,4 @@
 <?php
-//$Id$
 
 /**
  * Impelementation of hook_apachesolr_update_index()
