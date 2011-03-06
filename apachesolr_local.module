@@ -2,9 +2,10 @@
 
 function apachesolr_local_menu() {
   $items = array();
-  
+
   return $items;
 }
+
 /**
  * Implementation of hook_search
  */
@@ -12,33 +13,51 @@ function apachesolr_local_search($op = 'search', $keys = null) {
   switch ($op) {
     case 'name':
       return t('Local Search');
-    break;
+      break;
     case 'reset':
       apachesolr_clear_last_index('apachesolr_search');
-    break;
+      break;
     case 'search':
-      if ($near = search_query_extract($keys, 'near')){
-        $search_keys = str_replace('near:'.$near, '', $keys);
+      if ($near = search_query_extract($keys, 'near')) {
+        $search_keys = str_replace('near:' . $near, '', $keys);
         $near = str_replace('::', ' ', $near);
 
-	//Lets show all results if no key set but we have a location
-	if(!$search_keys && $near) {
-		$search_keys = '*:*';
-	}
-	
-	//TODO Need to handle no valid location found. It'd be nice if we could link this
-	//into the Location's module geocaching
+        //Lets show all results if no key set but we have a location
+        if (!$search_keys && $near) {
+          $search_keys = '*:*';
+        }
+
+        //TODO Need to handle no valid location found. It'd be nice if we could link this
+        //into the Location's module geocaching
         $gps = apachesolr_local_gps_lookup($near);
+
+        if ($radius_key = search_query_extract($keys, 'radius')) {
+          $search_keys = str_replace('radius:' . $radius_key, '', $search_keys);
+          $radius = apachesolr_local_parse_radius($radius_key);
+        }
       }
-      return apachesolr_search_search('search' ,$search_keys);
-    break;
+      return apachesolr_search_search('search', $search_keys);
+      break;
     case 'status':
       return apachesolr_index_status('apachesolr_search');
-    break;
+      break;
   }
 }
 
-
+/**
+ * function apachesolr_local_parse_radius() extracts a radius from the search keys
+ *
+ * We set $radius_param as static so the value is available throught the request once set...
+ * this is mainly so we can get to it and adjust the solr params in
+ * hook_apachesolr_modify_query(&$query, &$params, $caller);
+ */
+function apachesolr_local_parse_radius($radius=NULL) {
+  static $radius_param = NULL;
+  if ($radius) {
+    $radius_param = $radius;
+  }
+  return $radius_param;
+}
 
 /**
  * function apachesolr_local_gps_lookup() performs the geoencoding lookup based
@@ -51,19 +70,21 @@ function apachesolr_local_search($op = 'search', $keys = null) {
  */
 function apachesolr_local_gps_lookup($location=NULL) {
   static $gps = NULL;
-  if($location){
-      $url = 'http://maps.google.com/maps/geo?output=xml&oe=utf8&sensor=false&key='.gmap_get_key().'&q=';
-      $location = urlencode($location);
-      $string = file_get_contents($url . $location);
-      $results = simplexml_load_string($string);
-      if ((string)$results->Response->Status->code == '200') {
-        list($lng, $lat) = explode(',', (string) $results->Response->Placemark->Point->coordinates);
-      }
+  if ($location) {
+    $geocode = gmap_geocode($location);
 
-      $gps = array('lat' => $lat, 'lng' => $lng, 'data' => $results->Response);
+    $url = 'http://maps.google.com/maps/geo?output=xml&oe=utf8&sensor=false&key=' . gmap_get_key() . '&q=';
+    $location = urlencode($location);
+    $string = file_get_contents($url . $location);
+    $results = simplexml_load_string($string);
+    if ((string) $results->Response->Status->code == '200') {
+      list($lng, $lat) = explode(',', (string) $results->Response->Placemark->Point->coordinates);
+    }
+
+    $gps = array('lat' => $lat, 'lng' => $lng, 'data' => $results->Response);
   }
- 
- 
+
+
   return $gps;
 }
 
@@ -74,8 +95,13 @@ function apachesolr_local_form_alter(&$form, $form_state, $form_id) {
   if ($form_id == 'search_form' && $form['module']['#value'] == 'apachesolr_local') {
     // Remove the ugly near: from the search box
     $keys = $form['basic']['inline']['keys']['#default_value'];
+
     $near = search_query_extract($keys, 'near');
-    $keys = str_replace('near:'.$near, '', $keys);
+    $keys = str_replace('near:' . $near, '', $keys);
+
+    $radius = search_query_extract($keys, 'radius');
+    $keys = str_replace('radius:' . $radius, '', $keys);
+
     $keys = $form['basic']['inline']['keys']['#default_value'] = $keys;
     //Perform some basic styling
     $form['basic']['#title'] = '';
@@ -85,11 +111,35 @@ function apachesolr_local_form_alter(&$form, $form_state, $form_id) {
     $form['basic']['inline']['submit']['#weight'] = -2;
     //Add a "near" search field
     $form['basic']['inline']['near'] = array(
-      '#type' => 'textfield',
-      '#title' => t('Near'),
-      '#weight' => -3,
-      '#size' => 20,
-      '#default_value' => str_replace('::', ' ', $near),
+        '#type' => 'textfield',
+        '#title' => t('Near'),
+        '#weight' => -3,
+        '#size' => 20,
+        '#default_value' => str_replace('::', ' ', $near),
+    );
+
+    if ($radius) {
+      $default_radius = str_replace('::', ' ', $radius);
+    }
+    else {
+      $default_radius = variable_get('apachesolr_local_default_radius', 5);
+    }
+
+    $form['basic']['inline']['radius'] = array(
+        '#type' => 'select',
+        '#title' => t('Within'),
+        '#weight' => -2,
+        '#options' => array(
+            1 => '1',
+            2 => '2',
+            5 => '5',
+            10 => '10',
+            25 => '25',
+            50 => '50',
+            100 => '100',
+        ),
+        '#suffix' => t('Miles'),
+        '#default_value' => $default_radius,
     );
     $form['#validate'][] = 'apachesolr_local_search_validate';
   }
@@ -104,11 +154,19 @@ function apachesolr_local_search_validate($form, &$form_state) {
   if (isset($form_state['values']['near'])) {
     $keys = search_query_insert($keys, 'near', str_replace(' ', '::', $form_state['values']['near']));
   }
+
+  if (isset($form_state['values']['radius'])) {
+    $keys = search_query_insert($keys, 'radius', str_replace(' ', '::', $form_state['values']['radius']));
+  }
+
   if (!empty($keys)) {
     form_set_value($form['basic']['inline']['processed_keys'], trim($keys), $form_state);
   }
 }
 
+function apachesolr_local_apachesolr_prepare_query(&$query, &$params, $caller) {
+  
+}
 
 /**
  * Implementatin of hook_apachesolr_modify_query(&$query, &$params, $caller);
@@ -116,16 +174,19 @@ function apachesolr_local_search_validate($form, &$form_state) {
  * TODO, make radius user selectable from a select box
  */
 function apachesolr_local_apachesolr_modify_query(&$query, &$params, $caller) {
-            if($gps = apachesolr_local_gps_lookup()){                
-                $params['qt'] = 'geo';
-                $params['lat'] = $gps['lat'];
-                $params['long'] = $gps['lng'];
-                $params['radius'] = 40;
-                $params['sort'] = 'geo_distance asc';
-		$params['fl'] = $params['fl'] .',body';
-            }
+  if ($gps = apachesolr_local_gps_lookup()) {
+
+    $params['qt'] = 'geo';
+    $params['lat'] = $gps['lat'];
+    $params['long'] = $gps['lng'];
+    if ($radius = apachesolr_local_parse_radius()) {
+      $params['radius'] = $radius;
+    }
+    else {
+      $params['radius'] = variable_get('apachesolr_local_default_radius', 5);
+    }
+    $params['sort'] = 'geo_distance asc';
+    $params['fl'] = $params['fl'] . ',body';
+  }
 }
-
-
-
 
